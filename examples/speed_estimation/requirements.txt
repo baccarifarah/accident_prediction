@@ -7,3 +7,4 @@ ultralytics
 super-gradients==3.5.0  # yolo_nas_example.py only, legacy model reference
 inference
 jsonargparse[signatures]
+pgmpy

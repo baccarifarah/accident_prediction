@@ -101,6 +101,31 @@ https://github.com/roboflow/supervision/assets/26109316/d50118c1-2ae4-458d-915a-
       --iou_threshold 0.5
   ```
 
+## 🚨 prédiction des accidents (réseau bayésien)
+
+`accident_risk.py` ajoute un module de prédiction du risque d'accident, branché dans `ultralytics_example.py`.
+
+Pour chaque paire de véhicules proches (< 60 m), à partir des trajectoires en mètres (vue de dessus) :
+
+| Nœud | États | Seuils (`THRESHOLDS`) |
+|---|---|---|
+| `TTC` (temps avant collision, vitesse constante) | critique / alerte / sur | < 1.5 s / < 3 s / ≥ 3 s |
+| `Distance` (headway, même voie) | critique / courte / sure | < 1 s / < 2 s / ≥ 2 s |
+| `Vitesse` (max de la paire) | faible / normale / elevee | < 50 / < 110 / ≥ 110 km/h |
+| `Trajectoire` (accélération, freinage ou écart) | stable / brusque | < 3 / ≥ 3 m/s² |
+
+Réseau (pgmpy) : `TTC, Distance -> Conflit` ; `Conflit, Vitesse, Trajectoire -> Accident`.
+Les CPT sont définies par expertise (pas de données d'accidents étiquetées).
+`P(Accident)` donne le niveau de risque : **faible** < 0.30 ≤ **moyen** < 0.60 ≤ **élevé**.
+
+Sortie : boîtes vertes / orange / rouges, ligne rouge et bandeau entre véhicules à risque élevé, alertes `[ALERTE]` dans la console.
+
+- vérifier le module et afficher les CPT
+
+  ```bash
+  python accident_risk.py
+  ```
+
 ## © license
 
 This demo integrates multiple components, each with its own licensing:

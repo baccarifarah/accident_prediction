@@ -7,6 +7,8 @@ from trackers import ByteTrackTracker
 from ultralytics import YOLO
 import supervision as sv
 
+from accident_risk import RISK_LEVELS, assess_frame
+
 
 
 # CONFIGURATION
@@ -33,6 +35,12 @@ MODEL_NAME = "yolo11n.pt"
 # Résolution utilisée par YOLO
 IMAGE_SIZE = 640
 
+# Couleurs par niveau de risque : faible, moyen, élevé
+RISK_PALETTE = sv.ColorPalette.from_hex(["#2ecc71", "#f39c12", "#e74c3c"])
+
+# Délai minimum entre deux alertes console pour la même paire (secondes)
+ALERT_COOLDOWN_S = 1.0
+
 
 
 # TRANSFORMATION PERSPECTIVE
@@ -57,19 +65,6 @@ class ViewTransformer:
         )
 
         return transformed_points.reshape(-1, 2)
-
-
-# CALCUL DE LA VITESSE
-def calculate_speed(distance, elapsed_frames, fps):
-
-    if elapsed_frames < 1:
-        return 0
-
-    elapsed_time = elapsed_frames / fps
-
-    speed = distance / elapsed_time * 3.6
-
-    return speed
 
 
 
@@ -111,10 +106,12 @@ def main(
     )
 
     box_annotator = sv.BoxAnnotator(
+        color=RISK_PALETTE,
         thickness=thickness
     )
 
     label_annotator = sv.LabelAnnotator(
+        color=RISK_PALETTE,
         text_scale=text_scale,
         text_thickness=thickness,
         text_position=sv.Position.BOTTOM_CENTER
@@ -140,10 +137,13 @@ def main(
         target=TARGET
     )
 
-    # Historique des positions
+    # Historique des positions (frame, x, y) sur ~1 s
     coordinates = defaultdict(
         lambda: deque(maxlen=int(video_info.fps))
     )
+
+    # Dernière alerte console par paire (anti-répétition)
+    last_alert = {}
 
     # Enregistrement vidéo
     with sv.VideoSink(
@@ -163,16 +163,17 @@ def main(
                 imgsz=IMAGE_SIZE,
                 conf=confidence_threshold,
                 iou=iou_threshold,
-                verbose=True
+                verbose=False
             )[0]
 
             # Conversion des détections
             detections = sv.Detections.from_ultralytics(result)
 
             # Filtrage des véhicules dans la zone
-           # detections = detections[
-           #     polygon_zone.trigger(detections)
-           # ]
+            # (hors zone calibrée, les mètres sont faux et créeraient de fausses alertes)
+            detections = detections[
+                polygon_zone.trigger(detections)
+            ]
 
             # Suivi des véhicules
             detections = byte_track.update(detections)
@@ -186,52 +187,66 @@ def main(
                 anchor=sv.Position.BOTTOM_CENTER
             )
 
+            # (pas de .astype(int) : arrondir au mètre fausse vitesses et TTC)
             points = view_transformer.transform_points(
                 points=points
-            ).astype(int)
+            )
 
-            # Enregistrer les positions
-            for tracker_id, [_, y] in zip(
+            # Enregistrer les positions (mètres, vue de dessus)
+            for tracker_id, (x, y) in zip(
                 detections.tracker_id,
                 points,
                 strict=True
             ):
 
                 coordinates[tracker_id].append(
-                    (frame_index, y)
+                    (frame_index, x, y)
                 )
 
-            # Calcul des vitesses
+            # Cinématique, TTC, réseau bayésien -> risque par véhicule
+            kin, vehicle_risk, pairs = assess_frame(
+                {tid: coordinates[tid] for tid in detections.tracker_id},
+                video_info.fps
+            )
+
             labels = []
+            risk_index = []
 
             for tracker_id in detections.tracker_id:
 
-                history = coordinates[tracker_id]
+                level, probability = vehicle_risk.get(tracker_id, (0, 0.0))
+                risk_index.append(level)
 
-                elapsed_frames = (
-                    history[-1][0] - history[0][0]
-                    if len(history) > 1
-                    else 0
-                )
-
-                if elapsed_frames < video_info.fps / 2:
-
+                if tracker_id not in kin:
                     labels.append(f"#{tracker_id}")
-
                     continue
 
-                distance = abs(
-                    history[-1][1] - history[0][1]
-                )
-
-                speed = calculate_speed(
-                    distance,
-                    elapsed_frames,
-                    video_info.fps
-                )
-
                 labels.append(
-                    f"#{tracker_id} {int(speed)} km/h"
+                    f"#{tracker_id} {int(kin[tracker_id]['speed_kmh'])} km/h"
+                    f" P={probability:.2f}"
+                )
+
+            risk_index = np.array(risk_index, dtype=int)
+
+            # Alertes : paires à risque élevé
+            danger = [p for p in pairs if p["level"] == 2]
+
+            for pair in danger:
+
+                ids = pair["ids"]
+
+                if frame_index - last_alert.get(ids, -np.inf) < ALERT_COOLDOWN_S * video_info.fps:
+                    continue
+
+                last_alert[ids] = frame_index
+
+                print(
+                    f"[ALERTE] t={frame_index / video_info.fps:.1f}s"
+                    f" frame={frame_index} #{ids[0]}<->#{ids[1]}"
+                    f" P={pair['probability']:.2f}"
+                    f" TTC={pair['ttc']:.1f}s"
+                    f" headway={pair['headway']:.1f}s"
+                    f" risque={RISK_LEVELS[pair['level']]}"
                 )
 
             # Dessiner les annotations
@@ -244,14 +259,45 @@ def main(
 
             annotated_frame = box_annotator.annotate(
                 scene=annotated_frame,
-                detections=detections
+                detections=detections,
+                custom_color_lookup=risk_index
             )
 
             annotated_frame = label_annotator.annotate(
                 scene=annotated_frame,
                 detections=detections,
-                labels=labels
+                labels=labels,
+                custom_color_lookup=risk_index
             )
+
+            # Ligne rouge entre véhicules en danger + bandeau d'alerte
+            anchors = dict(zip(
+                detections.tracker_id,
+                detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+            ))
+
+            for pair in danger:
+                a, b = (anchors[i] for i in pair["ids"])
+                annotated_frame = sv.draw_line(
+                    annotated_frame,
+                    sv.Point(*a), sv.Point(*b),
+                    color=RISK_PALETTE.by_idx(2),
+                    thickness=thickness * 2
+                )
+
+            if danger:
+                worst = danger[0]
+                # ponytail: texte ASCII, la police Hershey d'OpenCV ne gère pas les accents
+                annotated_frame = sv.draw_text(
+                    annotated_frame,
+                    f"ALERTE: risque eleve #{worst['ids'][0]}-#{worst['ids'][1]}"
+                    f" P={worst['probability']:.2f} TTC={worst['ttc']:.1f}s",
+                    text_anchor=sv.Point(video_info.resolution_wh[0] // 2, int(80 * text_scale)),
+                    text_color=sv.Color.WHITE,
+                    text_scale=text_scale * 1.5,
+                    text_thickness=thickness,
+                    background_color=RISK_PALETTE.by_idx(2)
+                )
 
             # Sauvegarder la vidéo
             sink.write_frame(annotated_frame)
