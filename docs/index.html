@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prédiction d'accidents routiers</title>
+<meta name="description" content="Documentation technique : détection, suivi et estimation du risque d'accident par réseau bayésien à partir de vidéos de trafic.">
+<style>
+:root {
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --ink: #1b1d21;
+  --ink-2: #4a4f57;
+  --ink-3: #7a808a;
+  --line: #e3e4e6;
+  --line-2: #cfd1d5;
+  --accent: #1f4fd1;
+  --accent-soft: #eaf0fd;
+  --code-bg: #f3f4f6;
+  --ok: #1e9e5a;
+  --warn: #d98a10;
+  --bad: #d43d2f;
+  --ok-soft: #e6f5ec;
+  --warn-soft: #fcf1de;
+  --bad-soft: #fbe7e5;
+  --side-w: 270px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --surface: #1a1c20;
+    --ink: #e8e9eb;
+    --ink-2: #b4b8bf;
+    --ink-3: #868b94;
+    --line: #2a2d33;
+    --line-2: #3a3e46;
+    --accent: #7aa2ff;
+    --accent-soft: #1c2640;
+    --code-bg: #20232a;
+    --ok: #3fbf7a;
+    --warn: #f0a531;
+    --bad: #f0675a;
+    --ok-soft: #16281f;
+    --warn-soft: #2d2414;
+    --bad-soft: #2e1a18;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* Barre latérale */
+.side {
+  position: fixed; inset: 0 auto 0 0; width: var(--side-w);
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  padding: 28px 20px 40px; overflow-y: auto;
+}
+.brand { font-weight: 650; font-size: 15px; line-height: 1.3; margin: 0 0 4px; }
+.brand-sub { color: var(--ink-3); font-size: 13px; margin: 0 0 28px; }
+.side nav ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+.side nav > ol > li { counter-increment: s; margin-bottom: 2px; }
+.side a {
+  display: block; color: var(--ink-2); text-decoration: none;
+  font-size: 14px; padding: 5px 10px; border-radius: 6px; line-height: 1.4;
+}
+.side nav > ol > li > a::before { content: counter(s) ". "; color: var(--ink-3); }
+.side a:hover { color: var(--ink); background: var(--code-bg); }
+.side a.active { color: var(--accent); background: var(--accent-soft); font-weight: 550; }
+.side ol ol { padding-left: 14px; margin: 2px 0 6px; }
+.side ol ol a { font-size: 13px; padding: 3px 10px; }
+
+/* Contenu */
+main { margin-left: var(--side-w); padding: 56px 56px 120px; }
+.content { max-width: 820px; margin: 0 auto; }
+h1 { font-size: 34px; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 14px; font-weight: 700; }
+h2 {
+  font-size: 24px; letter-spacing: -0.01em; margin: 72px 0 16px; padding-top: 24px;
+  border-top: 1px solid var(--line); font-weight: 650;
+}
+h3 { font-size: 18px; margin: 40px 0 10px; font-weight: 620; }
+p { margin: 0 0 16px; }
+.lead { font-size: 18px; color: var(--ink-2); max-width: 680px; }
+a { color: var(--accent); }
+strong { font-weight: 620; }
+ul, ol { padding-left: 22px; }
+li { margin-bottom: 6px; }
+:not(pre) > code {
+  background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.55; margin: 0 0 20px;
+}
+table { width: 100%; border-collapse: collapse; margin: 4px 0 24px; font-size: 14.5px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: 13px; border-bottom-color: var(--line-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-wrap { overflow-x: auto; }
+
+figure { margin: 28px 0 32px; }
+figure svg, figure img { display: block; width: 100%; height: auto; }
+figure img { border-radius: 8px; border: 1px solid var(--line); }
+.diagram {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px;
+}
+figcaption { color: var(--ink-3); font-size: 13.5px; margin-top: 10px; }
+
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 28px 0; }
+.fact { background: var(--surface); padding: 16px 18px; }
+.fact b { display: block; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.fact span { color: var(--ink-3); font-size: 13px; }
+
+.note {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 0 0 20px; font-size: 15px;
+}
+.note p:last-child { margin: 0; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 13px; font-weight: 600; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.formula {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px 18px; margin: 0 0 20px; overflow-x: auto; white-space: pre; line-height: 1.7;
+}
+
+/* SVG : couleurs pilotées par le thème */
+svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; fill: var(--ink); }
+svg .t-sub { fill: var(--ink-3); font-size: 11px; }
+svg .t-strong { font-weight: 600; }
+svg .box { fill: var(--surface); stroke: var(--line-2); stroke-width: 1.2; }
+svg .box-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+svg .edge { stroke: var(--ink-3); stroke-width: 1.4; fill: none; }
+svg .edge-acc { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+svg .frame { fill: none; stroke: var(--line-2); stroke-dasharray: 4 4; }
+svg .frame-acc { fill: none; stroke: var(--accent); stroke-dasharray: 4 4; opacity: .7; }
+svg .road { fill: var(--code-bg); stroke: var(--line-2); }
+svg .lane { stroke: var(--ink-3); stroke-dasharray: 10 8; stroke-width: 1.2; }
+svg .ink-fill { fill: var(--ink-3); }
+svg .acc-fill { fill: var(--accent); }
+svg .ok-fill { fill: var(--ok); }
+svg .warn-fill { fill: var(--warn); }
+svg .bad-fill { fill: var(--bad); }
+svg .bad-stroke { stroke: var(--bad); fill: none; stroke-width: 1.6; }
+
+.menu-btn { display: none; }
+@media (max-width: 980px) {
+  .side { transform: translateX(-100%); transition: transform .2s ease; z-index: 10; box-shadow: none; }
+  body.menu-open .side { transform: none; box-shadow: 0 0 0 100vmax rgba(0,0,0,.25); }
+  main { margin-left: 0; padding: 64px 16px 80px; }
+  .menu-btn {
+    display: block; position: fixed; top: 12px; left: 12px; z-index: 11;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
+    border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer;
+  }
+  .facts { grid-template-columns: 1fr; }
+  h1 { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+
+<button class="menu-btn" type="button" aria-label="Ouvrir le sommaire" onclick="document.body.classList.toggle('menu-open')">Sommaire</button>
+
+<aside class="side">
+  <p class="brand">Prédiction d'accidents routiers</p>
+  <p class="brand-sub">Documentation technique</p>
+  <nav aria-label="Sommaire">
+    <ol>
+      <li><a href="#apercu">Aperçu</a></li>
+      <li><a href="#demarrage">Démarrage rapide</a></li>
+      <li><a href="#architecture">Architecture</a>
+        <ol>
+          <li><a href="#pipeline">Pipeline</a></li>
+          <li><a href="#depot">Organisation du dépôt</a></li>
+          <li><a href="#technos">Technologies</a></li>
+        </ol>
+      </li>
+      <li><a href="#perception">Perception</a>
+        <ol>
+          <li><a href="#detection">Détection</a></li>
+          <li><a href="#suivi">Suivi</a></li>
+          <li><a href="#vue-dessus">Vue de dessus</a></li>
+        </ol>
+      </li>
+      <li><a href="#caracteristiques">Caractéristiques</a>
+        <ol>
+          <li><a href="#cinematique">Cinématique</a></li>
+          <li><a href="#paires">Paires de véhicules</a></li>
+          <li><a href="#ttc">Temps avant collision</a></li>
+          <li><a href="#discretisation">Discrétisation</a></li>
+        </ol>
+      </li>
+      <li><a href="#reseau">Réseau bayésien</a>
+        <ol>
+          <li><a href="#structure">Structure</a></li>
+          <li><a href="#cpt">Tables de probabilités</a></li>
+          <li><a href="#inference">Inférence</a></li>
+          <li><a href="#exemple">Exemple pas à pas</a></li>
+        </ol>
+      </li>
+      <li><a href="#alertes">Niveaux de risque et alertes</a></li>
+      <li><a href="#resultats">Résultats</a></li>
+      <li><a href="#reglages">Réglages</a></li>
+      <li><a href="#limites">Limites et suites</a></li>
+      <li><a href="#api">Référence du module</a></li>
+    </ol>
+  </nav>
+</aside>
+
+<main>
+<div class="content">
+
+<!-- 1. APERÇU -->
+<section id="apercu">
+  <h1>Prédiction d'accidents routiers à partir de vidéo</h1>
+  <p class="lead">Le système analyse une vidéo de trafic, détecte et suit chaque véhicule, mesure sa vitesse et sa trajectoire en mètres réels, puis estime pour chaque paire de véhicules la probabilité d'un accident à court terme avec un réseau bayésien. Le risque est classé en trois niveaux (faible, moyen, élevé) et une alerte est émise en cas de danger.</p>
+
+  <figure>
+    <img src="img/alerte.jpg" alt="Image annotée : boîtes colorées selon le risque, bandeau rouge d'alerte entre deux véhicules trop proches">
+    <figcaption>Sortie du système sur la vidéo de démonstration. Vert : risque faible, orange : moyen, rouge : élevé. Le bandeau indique la paire la plus dangereuse.</figcaption>
+  </figure>
+
+  <p>Le dépôt contient deux choses :</p>
+  <ul>
+    <li><strong>La bibliothèque <code>supervision</code></strong> (Roboflow, licence MIT) dans <code>src/supervision/</code>. Elle fournit les outils de vision : annotations, zones, lecture et écriture vidéo. Elle n'est pas modifiée.</li>
+    <li><strong>L'application de prédiction</strong> dans <code>examples/speed_estimation/</code> : le script de traitement vidéo et le module de risque <code>accident_risk.py</code>. C'est là que se trouve le travail propre au projet.</li>
+  </ul>
+</section>
+
+<!-- 2. DÉMARRAGE -->
+<section id="demarrage">
+  <h2>Démarrage rapide</h2>
+  <p>Python 3.10 ou plus récent. Les commandes se lancent depuis la racine du dépôt.</p>
+<pre><code>cd examples/speed_estimation
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ../.. ultralytics trackers pgmpy jsonargparse
+
+python video_downloader.py          # télécharge data/vehicles.mp4
+python accident_risk.py             # vérifie le module et affiche les tables
+python ultralytics_example.py \
+    --source_video_path data/vehicles.mp4 \
+    --target_video_path data/vehicles-risk.mp4</code></pre>
+  <p>Le script affiche la vidéo annotée dans une fenêtre (touche <code>q</code> pour quitter), l'enregistre dans le fichier de sortie et écrit les alertes dans la console. Le modèle <code>yolo11n.pt</code> est téléchargé automatiquement au premier lancement.</p>
+  <div class="note"><p><code>pip install -e ../..</code> installe la copie locale de <code>supervision</code> présente dans ce dépôt. Le fichier <code>requirements.txt</code> liste aussi des dépendances d'anciens exemples (<code>super-gradients</code>, <code>inference</code>) qui ne sont pas nécessaires ici.</p></div>
+
+  <h3>Options</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Option</th><th>Défaut</th><th>Rôle</th></tr>
+    <tr><td><code>--source_video_path</code></td><td>requis</td><td>Vidéo à analyser.</td></tr>
+    <tr><td><code>--target_video_path</code></td><td>requis</td><td>Vidéo annotée produite.</td></tr>
+    <tr><td><code>--confidence_threshold</code></td><td class="num">0.3</td><td>Confiance minimale d'une détection YOLO.</td></tr>
+    <tr><td><code>--iou_threshold</code></td><td class="num">0.5</td><td>Seuil de suppression des boîtes en double (NMS).</td></tr>
+  </table></div>
+</section>
+
+<!-- 3. ARCHITECTURE -->
+<section id="architecture">
+  <h2>Architecture</h2>
+  <p>Le traitement est une boucle sur les images de la vidéo. Chaque image traverse deux blocs : un bloc de <strong>perception</strong>, qui transforme les pixels en positions de véhicules en mètres, et un bloc de <strong>prédiction du risque</strong>, qui transforme ces positions en probabilité d'accident.</p>
+
+  <h3 id="pipeline">Pipeline</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 350" role="img" aria-label="Pipeline : vidéo, YOLO11n, filtre de zone, ByteTrack, homographie, puis cinématique, paires, discrétisation, réseau bayésien, niveau de risque et alertes">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
+        <marker id="ara" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="acc-fill"/></marker>
+      </defs>
+      <rect x="6" y="14" width="868" height="118" rx="10" class="frame"/>
+      <text x="22" y="34" class="t-sub">PERCEPTION · ultralytics_example.py</text>
+      <g>
+        <rect x="22" y="50" width="148" height="62" rx="8" class="box"/>
+        <text x="96" y="77" text-anchor="middle" class="t-strong" font-size="13">Image vidéo</text>
+        <text x="96" y="96" text-anchor="middle" class="t-sub">3840×2160, 25 i/s</text>
+        <rect x="192" y="50" width="148" height="62" rx="8" class="box"/>
+        <text x="266" y="77" text-anchor="middle" class="t-strong" font-size="13">YOLO11n</text>
+        <text x="266" y="96" text-anchor="middle" class="t-sub">boîtes englobantes</text>
+        <rect x="362" y="50" width="148" height="62" rx="8" class="box"/>
+        <text x="436" y="77" text-anchor="middle" class="t-strong" font-size="13">Filtre de zone</text>
+        <text x="436" y="96" text-anchor="middle" class="t-sub">PolygonZone</text>
+        <rect x="532" y="50" width="148" height="62" rx="8" class="box"/>
+        <text x="606" y="77" text-anchor="middle" class="t-strong" font-size="13">ByteTrack</text>
+        <text x="606" y="96" text-anchor="middle" class="t-sub">identifiant par véhicule</text>
+        <rect x="702" y="50" width="156" height="62" rx="8" class="box"/>
+        <text x="780" y="77" text-anchor="middle" class="t-strong" font-size="13">Homographie</text>
+        <text x="780" y="96" text-anchor="middle" class="t-sub">pixels → mètres</text>
+      </g>
+      <path d="M170 81H190" class="edge" marker-end="url(#ar)"/><path d="M340 81H360" class="edge" marker-end="url(#ar)"/><path d="M510 81H530" class="edge" marker-end="url(#ar)"/><path d="M680 81H700" class="edge" marker-end="url(#ar)"/>
+      <path d="M780 112V156H96V214" class="edge" marker-end="url(#ar)"/>
+      <text x="438" y="151" text-anchor="middle" class="t-sub">historique (image, x, y) sur 1 s par véhicule</text>
+
+      <g transform="translate(0,20)"><rect x="6" y="160" width="868" height="160" rx="10" class="frame-acc"/>
+      <text x="858" y="180" text-anchor="end" class="t-sub">PRÉDICTION DU RISQUE · accident_risk.py</text>
+      <g>
+        <rect x="22" y="196" width="148" height="70" rx="8" class="box-acc"/>
+        <text x="96" y="224" text-anchor="middle" class="t-strong" font-size="13">Cinématique</text>
+        <text x="96" y="242" text-anchor="middle" class="t-sub">vitesse, accélération</text>
+        <rect x="192" y="196" width="148" height="70" rx="8" class="box-acc"/>
+        <text x="266" y="224" text-anchor="middle" class="t-strong" font-size="13">Paires</text>
+        <text x="266" y="242" text-anchor="middle" class="t-sub">distance, headway, TTC</text>
+        <rect x="362" y="196" width="148" height="70" rx="8" class="box-acc"/>
+        <text x="436" y="224" text-anchor="middle" class="t-strong" font-size="13">Discrétisation</text>
+        <text x="436" y="242" text-anchor="middle" class="t-sub">seuils → états</text>
+        <rect x="532" y="196" width="148" height="70" rx="8" class="box-acc"/>
+        <text x="606" y="224" text-anchor="middle" class="t-strong" font-size="13">Réseau bayésien</text>
+        <text x="606" y="242" text-anchor="middle" class="t-sub">P(accident)</text>
+        <rect x="702" y="196" width="156" height="70" rx="8" class="box-acc"/>
+        <text x="780" y="224" text-anchor="middle" class="t-strong" font-size="13">Risque et alertes</text>
+        <text x="780" y="242" text-anchor="middle" class="t-sub">faible, moyen, élevé</text>
+      </g>
+      <path d="M170 231H190" class="edge-acc" marker-end="url(#ara)"/><path d="M340 231H360" class="edge-acc" marker-end="url(#ara)"/><path d="M510 231H530" class="edge-acc" marker-end="url(#ara)"/><path d="M680 231H700" class="edge-acc" marker-end="url(#ara)"/>
+      <text x="780" y="300" text-anchor="middle" class="t-sub">vidéo annotée + console</text></g>
+    </svg>
+    <figcaption>Le bloc du haut existait déjà (estimation de vitesse). Le bloc du bas est le module de prédiction ajouté.</figcaption>
+  </figure>
+
+  <h3 id="depot">Organisation du dépôt</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Chemin</th><th>Contenu</th></tr>
+    <tr><td><code>examples/speed_estimation/ultralytics_example.py</code></td><td>Programme principal : boucle vidéo, détection, suivi, appel du module de risque, dessin et alertes.</td></tr>
+    <tr><td><code>examples/speed_estimation/accident_risk.py</code></td><td>Module de risque : caractéristiques, seuils, réseau bayésien, niveaux. Indépendant de YOLO, testable seul.</td></tr>
+    <tr><td><code>examples/speed_estimation/video_downloader.py</code></td><td>Télécharge la vidéo de démonstration.</td></tr>
+    <tr><td><code>examples/speed_estimation/requirements.txt</code></td><td>Dépendances Python de l'exemple.</td></tr>
+    <tr><td><code>src/supervision/</code></td><td>Bibliothèque Roboflow Supervision (annotations, zones, vidéo, géométrie).</td></tr>
+    <tr><td><code>docs/index.html</code></td><td>Cette documentation.</td></tr>
+    <tr><td><code>.github/</code></td><td>Intégration continue héritée de Supervision.</td></tr>
+  </table></div>
+
+  <h3 id="technos">Technologies</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Outil</th><th>Usage dans le projet</th></tr>
+    <tr><td>Ultralytics YOLO11n</td><td>Détection des véhicules, image par image. Version « nano », la plus légère, entrée redimensionnée à 640 px.</td></tr>
+    <tr><td>trackers (ByteTrack)</td><td>Association des détections d'une image à l'autre pour donner à chaque véhicule un identifiant stable.</td></tr>
+    <tr><td>OpenCV</td><td>Calcul de l'homographie (<code>getPerspectiveTransform</code>) et projection des points.</td></tr>
+    <tr><td>Supervision</td><td>Format commun des détections, zone polygonale, annotations, lecture et écriture vidéo.</td></tr>
+    <tr><td>pgmpy</td><td>Définition du réseau bayésien et inférence exacte par élimination de variables.</td></tr>
+    <tr><td>NumPy</td><td>Calculs vectoriels : vitesses, TTC, distances.</td></tr>
+  </table></div>
+</section>
+
+<!-- 4. PERCEPTION -->
+<section id="perception">
+  <h2>Perception</h2>
+  <p>Objectif : passer de pixels à des positions de véhicules en mètres, avec un identifiant constant dans le temps.</p>
+
+  <h3 id="detection">Détection</h3>
+  <p>Chaque image est passée à YOLO11n, qui renvoie une boîte englobante, une classe et un score par objet. Les détections sous le seuil de confiance (0.3 par défaut) sont écartées. Seules les détections dont le point bas-centre tombe dans la zone calibrée de la route sont gardées (<code>PolygonZone</code>) : en dehors, la conversion en mètres n'a pas de sens et produirait de fausses alertes.</p>
+
+  <h3 id="suivi">Suivi</h3>
+  <p>ByteTrack relie les détections successives d'un même véhicule. Il utilise aussi les détections de faible confiance pour ne pas perdre un véhicule partiellement masqué. Les détections sans identifiant confirmé sont ignorées.</p>
+
+  <h3 id="vue-dessus">Vue de dessus</h3>
+  <p>La caméra voit la route en perspective : un mètre près de la caméra occupe beaucoup plus de pixels qu'un mètre au loin. Une homographie convertit les pixels en coordonnées sur le plan de la route. Quatre points du sol dans l'image (<code>SOURCE</code>) sont associés aux quatre coins d'un rectangle de <strong>25 m × 250 m</strong> (<code>TARGET</code>).</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 300" role="img" aria-label="Le trapèze de la route dans l'image est projeté vers un rectangle de 25 par 250 mètres">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
+      </defs>
+      <text x="200" y="22" text-anchor="middle" class="t-sub">IMAGE CAMÉRA (pixels)</text>
+      <rect x="20" y="34" width="360" height="236" rx="6" class="box"/>
+      <polygon points="160,70 240,70 360,250 40,250" class="road"/>
+      <line x1="200" y1="70" x2="200" y2="250" class="lane"/>
+      <circle cx="160" cy="70" r="4" class="acc-fill"/><text x="148" y="64" text-anchor="end" font-size="12">A</text>
+      <circle cx="240" cy="70" r="4" class="acc-fill"/><text x="252" y="64" font-size="12">B</text>
+      <circle cx="360" cy="250" r="4" class="acc-fill"/><text x="364" y="266" font-size="12">C</text>
+      <circle cx="40" cy="250" r="4" class="acc-fill"/><text x="30" y="266" font-size="12" text-anchor="end">D</text>
+      <rect x="183" y="110" width="16" height="12" rx="2" class="ink-fill"/>
+      <rect x="208" y="190" width="30" height="22" rx="3" class="ink-fill"/>
+
+      <path d="M400 152H520" class="edge" marker-end="url(#ar2)"/>
+      <text x="460" y="140" text-anchor="middle" font-size="12" class="t-strong">homographie H</text>
+      <text x="460" y="172" text-anchor="middle" class="t-sub">cv2.getPerspectiveTransform</text>
+
+      <text x="700" y="22" text-anchor="middle" class="t-sub">VUE DE DESSUS (mètres)</text>
+      <rect x="640" y="34" width="120" height="236" class="road"/>
+      <line x1="700" y1="34" x2="700" y2="270" class="lane"/>
+      <circle cx="640" cy="34" r="4" class="acc-fill"/><text x="630" y="40" text-anchor="end" font-size="12">A (0, 0)</text>
+      <circle cx="760" cy="34" r="4" class="acc-fill"/><text x="770" y="40" font-size="12">B (24, 0)</text>
+      <circle cx="760" cy="270" r="4" class="acc-fill"/><text x="770" y="274" font-size="12">C (24, 249)</text>
+      <circle cx="640" cy="270" r="4" class="acc-fill"/><text x="630" y="274" text-anchor="end" font-size="12">D (0, 249)</text>
+      <rect x="672" y="100" width="10" height="20" rx="2" class="ink-fill"/>
+      <rect x="712" y="190" width="10" height="20" rx="2" class="ink-fill"/>
+      <text x="835" y="152" text-anchor="middle" class="t-sub">y : axe</text>
+      <text x="835" y="166" text-anchor="middle" class="t-sub">de la route</text>
+    </svg>
+    <figcaption>Dans la vue de dessus, x est l'axe transversal (largeur des voies) et y l'axe longitudinal (sens de circulation). Les distances y sont mesurables en mètres.</figcaption>
+  </figure>
+  <p>Pour chaque véhicule suivi, le point bas-centre de sa boîte (contact avec le sol) est projeté, et le triplet <code>(image, x, y)</code> est ajouté à son historique. L'historique garde la dernière seconde (25 images).</p>
+  <div class="note"><p>Les coordonnées <code>SOURCE</code> sont propres à la caméra de la vidéo de démonstration. Pour une autre vidéo, il faut repérer quatre points du sol formant un rectangle de dimensions connues. Voir <a href="#reglages">Réglages</a>.</p></div>
+</section>
+
+<!-- 5. CARACTÉRISTIQUES -->
+<section id="caracteristiques">
+  <h2>Caractéristiques</h2>
+  <p>Le réseau bayésien raisonne sur quatre informations par paire de véhicules : le temps avant collision, la distance de sécurité, la vitesse et la stabilité de la trajectoire. Elles sont calculées à partir des historiques en mètres.</p>
+
+  <h3 id="cinematique">Cinématique d'un véhicule</h3>
+  <p>Un véhicule n'est évalué que si son historique couvre au moins une demi-seconde. On note p<sub>0</sub>, p<sub>m</sub>, p<sub>n</sub> les positions au début, au milieu et à la fin de l'historique, aux instants t<sub>0</sub>, t<sub>m</sub>, t<sub>n</sub>.</p>
+<div class="formula">vitesse (vecteur, m/s)   v  = (pₙ − p₀) / (tₙ − t₀)
+vitesse (km/h)           |v| × 3.6
+accélération (m/s²)      a  = | v₂ − v₁ | / ((tₙ − t₀) / 2)
+   avec v₁ = (pₘ − p₀) / (tₘ − t₀)   et   v₂ = (pₙ − pₘ) / (tₙ − tₘ)</div>
+  <p>La vitesse est un vecteur à deux dimensions : elle sert à la fois à l'affichage et à la prédiction de trajectoire. L'accélération compare la première et la seconde moitié de la fenêtre. Elle augmente avec un freinage brusque comme avec un changement de direction (écart, changement de voie).</p>
+
+  <h3 id="paires">Paires de véhicules</h3>
+  <p>Toutes les paires de véhicules visibles sont évaluées, sauf celles distantes de plus de 60 m (aucune interaction possible à court terme). Pour une paire (i, j), avec p = p<sub>j</sub> − p<sub>i</sub> la position relative :</p>
+  <ul>
+    <li><strong>Distance</strong> : |p|, en mètres.</li>
+    <li><strong>Headway (temps inter-véhiculaire)</strong> : si les deux véhicules sont dans la même voie (écart transversal inférieur à 3.5 m), écart longitudinal moins une longueur de véhicule (4.5 m), divisé par la vitesse du véhicule suiveur. C'est la « règle des 2 secondes » : à 90 km/h, 1 s de headway correspond à 25 m. Le suiveur est le véhicule dont la vitesse pointe vers l'autre. Hors même voie, le headway est infini.</li>
+    <li><strong>Vitesse de la paire</strong> : la plus grande des deux vitesses.</li>
+    <li><strong>Accélération de la paire</strong> : la plus grande des deux.</li>
+    <li><strong>TTC</strong> : détaillé ci-dessous.</li>
+  </ul>
+
+  <h3 id="ttc">Temps avant collision (TTC)</h3>
+  <p>Le TTC est le temps restant avant que deux véhicules se touchent s'ils gardent leur vitesse actuelle. C'est l'indicateur de référence en sécurité routière pour repérer les quasi-accidents.</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 250" role="img" aria-label="Deux véhicules sur une route vue de dessus, zone de collision elliptique autour du véhicule de devant, vitesse relative et TTC">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
+        <marker id="ar3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="acc-fill"/></marker>
+      </defs>
+      <rect x="20" y="40" width="840" height="150" class="road"/>
+      <line x1="20" y1="115" x2="860" y2="115" class="lane"/>
+      <text x="30" y="30" class="t-sub">sens de circulation (axe y) →</text>
+
+      <rect x="150" y="62" width="70" height="32" rx="6" class="ink-fill"/>
+      <text x="185" y="83" text-anchor="middle" font-size="12" fill="#fff" style="fill:#fff">i</text>
+      <path d="M222 78H330" class="edge" marker-end="url(#ar3)"/>
+      <text x="276" y="70" text-anchor="middle" font-size="12">vᵢ = 30 m/s</text>
+
+      <ellipse cx="610" cy="78" rx="90" ry="38" class="bad-stroke" stroke-dasharray="5 4"/>
+      <rect x="575" y="62" width="70" height="32" rx="6" class="ink-fill"/>
+      <text x="610" y="83" text-anchor="middle" font-size="12" style="fill:#fff">j</text>
+      <path d="M647 78H780" class="edge" marker-end="url(#ar3)"/>
+      <text x="745" y="70" text-anchor="middle" font-size="12">vⱼ = 22 m/s</text>
+      <text x="610" y="160" text-anchor="middle" font-size="12" style="fill:var(--bad)">zone de collision : ellipse L = 4.5 m, W = 2 m</text>
+
+      <path d="M222 104H516" class="edge-acc" marker-end="url(#ar3a)"/>
+      <text x="370" y="132" text-anchor="middle" font-size="12" style="fill:var(--accent)">écart restant avant la zone</text>
+
+      <rect x="150" y="140" width="70" height="32" rx="6" class="ink-fill" opacity=".35"/>
+      <text x="185" y="214" text-anchor="middle" class="t-sub">voie voisine : pas de trajectoire de collision, TTC = ∞</text>
+      <path d="M222 156H330" class="edge" marker-end="url(#ar3)" opacity=".5"/>
+    </svg>
+    <figcaption>Le véhicule i se rapproche de j à 8 m/s. Le TTC est l'instant où la position relative entre dans la zone de collision.</figcaption>
+  </figure>
+  <p>Avec p la position relative et v = v<sub>j</sub> − v<sub>i</sub> la vitesse relative, la position relative au temps t vaut p + v·t. La collision a lieu quand ce point entre dans une zone autour du véhicule, plus longue (4.5 m) que large (2 m). Pour garder un calcul simple, l'axe transversal est dilaté d'un facteur L/W, ce qui transforme l'ellipse en cercle de rayon L. On résout alors une équation du second degré :</p>
+<div class="formula">| p' + v'·t |² = L²      (p', v' : p et v avec x multiplié par L/W)
+
+a = v'·v'     b = 2 p'·v'     c = p'·p' − L²
+
+c ≤ 0                  →  TTC = 0       (déjà en contact)
+Δ = b² − 4ac < 0       →  TTC = ∞       (les trajectoires ne se croisent pas)
+t = (−b − √Δ) / 2a > 0 →  TTC = t
+sinon                  →  TTC = ∞       (les véhicules s'éloignent)</div>
+  <p>Cette formulation couvre la collision par l'arrière, la collision frontale et les trajectoires qui se croisent. Deux véhicules côte à côte dans des voies voisines, à la même vitesse, ont une vitesse relative nulle : le TTC est infini et ils ne sont pas signalés, contrairement à un simple seuil de distance.</p>
+
+  <h3 id="discretisation">Discrétisation</h3>
+  <p>Le réseau bayésien travaille sur des variables discrètes. Chaque mesure continue est rangée dans un état selon des seuils issus des pratiques de sécurité routière. Tous les seuils sont regroupés dans le dictionnaire <code>THRESHOLDS</code>.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Nœud</th><th>Mesure</th><th>États et seuils</th><th>Justification</th></tr>
+    <tr><td><strong>TTC</strong></td><td>temps avant collision</td><td><span class="pill bad">critique</span> &lt; 1.5 s ≤ <span class="pill warn">alerte</span> &lt; 3 s ≤ <span class="pill ok">sur</span></td><td>1.5 s est le seuil de conflit grave couramment utilisé (Hayward, SSAM de la FHWA).</td></tr>
+    <tr><td><strong>Distance</strong></td><td>headway</td><td><span class="pill bad">critique</span> &lt; 1 s ≤ <span class="pill warn">courte</span> &lt; 2 s ≤ <span class="pill ok">sure</span></td><td>Règle des 2 secondes. Sous 1 s, temps de réaction insuffisant.</td></tr>
+    <tr><td><strong>Vitesse</strong></td><td>max de la paire</td><td><span class="pill ok">faible</span> &lt; 50 ≤ <span class="pill warn">normale</span> &lt; 110 ≤ <span class="pill bad">elevee</span> km/h</td><td>Adapté à l'autoroute de la vidéo. L'énergie d'un choc croît avec le carré de la vitesse.</td></tr>
+    <tr><td><strong>Trajectoire</strong></td><td>max accélération</td><td><span class="pill ok">stable</span> &lt; 3 m/s² ≤ <span class="pill bad">brusque</span></td><td>Au-delà de 3 m/s², freinage appuyé ou manœuvre d'évitement.</td></tr>
+  </table></div>
+</section>
+
+<!-- 6. RÉSEAU BAYÉSIEN -->
+<section id="reseau">
+  <h2>Réseau bayésien</h2>
+  <p>Un réseau bayésien est un graphe orienté où chaque nœud est une variable aléatoire et chaque flèche une dépendance directe. Chaque nœud porte une table de probabilités conditionnelles (CPT) qui donne sa loi selon l'état de ses parents. Le réseau permet de calculer la probabilité d'une variable non observée (ici l'accident) à partir des variables observées, en combinant les causes de façon explicable.</p>
+
+  <h3 id="structure">Structure</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 330" role="img" aria-label="Graphe : TTC et Distance vers Conflit ; Conflit, Vitesse et Trajectoire vers Accident">
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ink-fill"/></marker>
+      </defs>
+      <text x="20" y="22" class="t-sub">OBSERVÉS (calculés sur la vidéo)</text>
+      <rect x="40" y="38" width="160" height="60" rx="30" class="box"/>
+      <text x="120" y="64" text-anchor="middle" class="t-strong" font-size="14">TTC</text>
+      <text x="120" y="82" text-anchor="middle" class="t-sub">critique · alerte · sur</text>
+      <rect x="250" y="38" width="160" height="60" rx="30" class="box"/>
+      <text x="330" y="64" text-anchor="middle" class="t-strong" font-size="14">Distance</text>
+      <text x="330" y="82" text-anchor="middle" class="t-sub">critique · courte · sure</text>
+      <rect x="470" y="38" width="160" height="60" rx="30" class="box"/>
+      <text x="550" y="64" text-anchor="middle" class="t-strong" font-size="14">Vitesse</text>
+      <text x="550" y="82" text-anchor="middle" class="t-sub">faible · normale · elevee</text>
+      <rect x="680" y="38" width="160" height="60" rx="30" class="box"/>
+      <text x="760" y="64" text-anchor="middle" class="t-strong" font-size="14">Trajectoire</text>
+      <text x="760" y="82" text-anchor="middle" class="t-sub">stable · brusque</text>
+
+      <text x="20" y="150" class="t-sub">LATENT</text>
+      <rect x="145" y="150" width="160" height="60" rx="30" class="box-acc"/>
+      <text x="225" y="176" text-anchor="middle" class="t-strong" font-size="14">Conflit</text>
+      <text x="225" y="194" text-anchor="middle" class="t-sub">non · oui</text>
+
+      <text x="20" y="262" class="t-sub">PRÉDIT</text>
+      <rect x="430" y="250" width="200" height="64" rx="32" class="box-acc" style="stroke-width:2"/>
+      <text x="530" y="278" text-anchor="middle" class="t-strong" font-size="15">Accident</text>
+      <text x="530" y="297" text-anchor="middle" class="t-sub">P(oui) → niveau de risque</text>
+
+      <path d="M135 98L205 148" class="edge" marker-end="url(#ar4)"/>
+      <path d="M315 98L245 148" class="edge" marker-end="url(#ar4)"/>
+      <path d="M290 207L460 258" class="edge" marker-end="url(#ar4)"/>
+      <path d="M550 98V248" class="edge" marker-end="url(#ar4)"/>
+      <path d="M745 98L600 252" class="edge" marker-end="url(#ar4)"/>
+    </svg>
+    <figcaption>Le nœud Conflit résume la situation géométrique (les trajectoires vont-elles se rencontrer ?). Le nœud Accident combine ce conflit avec les facteurs aggravants.</figcaption>
+  </figure>
+  <p>Le choix d'un nœud intermédiaire <strong>Conflit</strong> sépare deux questions : « les véhicules sont-ils sur une trajectoire de rencontre ? » (TTC et distance) et « si oui, la situation tourne-t-elle à l'accident ? » (vitesse et stabilité). Cela réduit la taille des tables : 9 + 12 colonnes au lieu de 54 pour une table unique, chacune plus facile à justifier.</p>
+
+  <h3 id="cpt">Tables de probabilités</h3>
+  <p>Aucun jeu de données d'accidents étiqueté n'étant disponible, les tables sont fixées par expertise, à partir des seuils de la littérature et de règles de cohérence : la probabilité augmente quand le TTC baisse, quand le headway baisse, quand la vitesse monte et quand la trajectoire devient brusque.</p>
+
+  <p><strong>P(Conflit = oui | TTC, Distance)</strong></p>
+  <div class="table-wrap"><table>
+    <tr><th>TTC \ Distance</th><th class="num">critique</th><th class="num">courte</th><th class="num">sure</th></tr>
+    <tr><td>critique</td><td class="num">0.97</td><td class="num">0.95</td><td class="num">0.90</td></tr>
+    <tr><td>alerte</td><td class="num">0.75</td><td class="num">0.60</td><td class="num">0.45</td></tr>
+    <tr><td>sur</td><td class="num">0.40</td><td class="num">0.15</td><td class="num">0.02</td></tr>
+  </table></div>
+
+  <p><strong>P(Accident = oui | Conflit, Vitesse, Trajectoire)</strong></p>
+  <div class="table-wrap"><table>
+    <tr><th>Conflit</th><th>Vitesse</th><th class="num">stable</th><th class="num">brusque</th></tr>
+    <tr><td>non</td><td>faible</td><td class="num">0.005</td><td class="num">0.03</td></tr>
+    <tr><td>non</td><td>normale</td><td class="num">0.01</td><td class="num">0.06</td></tr>
+    <tr><td>non</td><td>elevee</td><td class="num">0.03</td><td class="num">0.12</td></tr>
+    <tr><td>oui</td><td>faible</td><td class="num">0.40</td><td class="num">0.60</td></tr>
+    <tr><td>oui</td><td>normale</td><td class="num">0.65</td><td class="num">0.85</td></tr>
+    <tr><td>oui</td><td>elevee</td><td class="num">0.80</td><td class="num">0.95</td></tr>
+  </table></div>
+  <p>Les nœuds racines ont aussi une loi a priori (trafic autoroutier courant, par exemple TTC « sur » dans 80 % des cas). Comme les quatre racines sont toujours observées au moment de l'inférence, ces a priori n'influencent pas le résultat. Ils rendent le modèle complet et utilisable pour d'autres requêtes, par exemple estimer la vitesse la plus probable sachant qu'un accident a eu lieu.</p>
+
+  <h3 id="inference">Inférence</h3>
+  <p>Pour une paire, les quatre états observés forment l'évidence e = (TTC, Distance, Vitesse, Trajectoire). pgmpy calcule P(Accident = oui | e) par élimination de variables, ce qui revient ici à sommer sur le nœud latent :</p>
+<div class="formula">P(A = oui | e) =  Σ   P(A = oui | Conflit = c, Vitesse, Trajectoire) × P(Conflit = c | TTC, Distance)
+                c ∈ {non, oui}</div>
+  <p>Il n'existe que 3 × 3 × 3 × 2 = 54 combinaisons d'états. Le résultat de chaque combinaison est mis en cache (<code>functools.lru_cache</code>) : pgmpy n'est appelé qu'une fois par combinaison sur toute la vidéo, puis la réponse est immédiate. Sans ce cache, une vingtaine de véhicules (environ 190 paires) à 25 images par seconde rendrait l'inférence trop lente.</p>
+
+  <h3 id="exemple">Exemple pas à pas</h3>
+  <p>Deux véhicules dans la même voie roulent l'un vers l'autre à 90 km/h (25 m/s), séparés de 21.7 m.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Étape</th><th>Valeur</th><th>État</th></tr>
+    <tr><td>TTC = (21.7 − 4.5) / 50</td><td class="num">0.34 s</td><td><span class="pill bad">critique</span></td></tr>
+    <tr><td>Headway = (21.7 − 4.5) / 25</td><td class="num">0.69 s</td><td><span class="pill bad">critique</span></td></tr>
+    <tr><td>Vitesse</td><td class="num">90 km/h</td><td><span class="pill warn">normale</span></td></tr>
+    <tr><td>Accélération</td><td class="num">0 m/s²</td><td><span class="pill ok">stable</span></td></tr>
+  </table></div>
+<div class="formula">P(Conflit = oui) = 0.97
+P(Accident = oui) = 0.65 × 0.97 + 0.01 × 0.03 = 0.631   →   risque élevé</div>
+</section>
+
+<!-- 7. ALERTES -->
+<section id="alertes">
+  <h2>Niveaux de risque et alertes</h2>
+  <p>La probabilité est convertie en trois niveaux. Chaque véhicule prend le niveau de sa paire la plus dangereuse.</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 120" role="img" aria-label="Échelle de probabilité : faible de 0 à 0.30, moyen de 0.30 à 0.60, élevé de 0.60 à 1">
+      <rect x="40" y="30" width="240" height="26" rx="4" class="ok-fill"/>
+      <rect x="280" y="30" width="240" height="26" class="warn-fill"/>
+      <rect x="520" y="30" width="320" height="26" rx="4" class="bad-fill"/>
+      <rect x="276" y="30" width="8" height="26" class="warn-fill"/>
+      <rect x="516" y="30" width="8" height="26" class="bad-fill"/>
+      <text x="160" y="48" text-anchor="middle" font-size="13" class="t-strong" style="fill:#fff">faible</text>
+      <text x="400" y="48" text-anchor="middle" font-size="13" class="t-strong" style="fill:#fff">moyen</text>
+      <text x="680" y="48" text-anchor="middle" font-size="13" class="t-strong" style="fill:#fff">élevé</text>
+      <text x="40" y="76" text-anchor="middle" class="t-sub">0</text>
+      <text x="280" y="76" text-anchor="middle" class="t-sub">0.30</text>
+      <text x="520" y="76" text-anchor="middle" class="t-sub">0.60</text>
+      <text x="840" y="76" text-anchor="middle" class="t-sub">1</text>
+      <text x="440" y="104" text-anchor="middle" class="t-sub">P(Accident = oui)</text>
+    </svg>
+  </figure>
+  <p>Effets dans la vidéo et la console :</p>
+  <ul>
+    <li><strong>Boîtes et étiquettes</strong> colorées selon le niveau, avec l'identifiant, la vitesse et la probabilité : <code>#3 132 km/h P=0.93</code>.</li>
+    <li><strong>Risque élevé</strong> : ligne rouge entre les deux véhicules, bandeau rouge en haut de l'image avec la paire la plus dangereuse.</li>
+    <li><strong>Console</strong> : une ligne par alerte, au plus une fois par seconde pour une même paire.</li>
+  </ul>
+<pre><code>[ALERTE] t=2.0s frame=50 #2&lt;-&gt;#3 P=0.93 TTC=1.4s headway=0.1s risque=élevé</code></pre>
+</section>
+
+<!-- 8. RÉSULTATS -->
+<section id="resultats">
+  <h2>Résultats</h2>
+
+  <h3>Tests du module</h3>
+  <p><code>python accident_risk.py</code> rejoue quatre scénarios synthétiques et vérifie le niveau obtenu.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Scénario</th><th>TTC</th><th>Headway</th><th>États (TTC, Distance, Vitesse, Trajectoire)</th><th class="num">P</th><th>Niveau</th></tr>
+    <tr><td>Face à face, même voie, 90 km/h chacun</td><td class="num">0.34 s</td><td class="num">0.69 s</td><td>critique, critique, normale, stable</td><td class="num">0.63</td><td><span class="pill bad">élevé</span></td></tr>
+    <tr><td>Voies voisines, même vitesse</td><td class="num">∞</td><td class="num">∞</td><td>sur, sure, normale, stable</td><td class="num">0.02</td><td><span class="pill ok">faible</span></td></tr>
+    <tr><td>Suivi serré, le véhicule de devant freine à 6 m/s²</td><td class="num">5.1 s</td><td class="num">0.59 s</td><td>sur, critique, normale, brusque</td><td class="num">0.38</td><td><span class="pill warn">moyen</span></td></tr>
+    <tr><td>Véhicules à 200 m</td><td colspan="3">paire ignorée (au-delà de 60 m)</td><td class="num">0</td><td><span class="pill ok">faible</span></td></tr>
+  </table></div>
+
+  <h3>Vidéo de démonstration</h3>
+  <p>Vidéo d'autoroute fournie par Roboflow : 3840×2160, 25 images par seconde, 538 images (21.5 s). Traitement sur processeur (Apple Silicon, sans GPU).</p>
+  <div class="facts" id="stats">
+    <div class="fact"><b>538</b><span>images analysées</span></div>
+    <div class="fact"><b>1</b><span>alertes de risque élevé</span></div>
+    <div class="fact"><b>~5 i/s</b><span>vitesse de traitement (CPU)</span></div>
+  </div>
+  <figure>
+    <img src="img/alerte.jpg" alt="Alerte : un véhicule à 132 km/h colle le véhicule qui le précède, headway 0.1 s">
+    <figcaption>Image 50 (t = 2.0 s) : le véhicule #3, à 132 km/h, suit le véhicule #2 (en bas, partiellement hors champ) avec un headway de 0.1 s et un TTC de 1.4 s. P = 0.93, risque élevé. Les autres véhicules restent en vert ; le poids lourd #1, proche, passe en orange.</figcaption>
+  </figure>
+  <figure>
+    <img src="img/normal.jpg" alt="Trafic fluide : tous les véhicules en vert">
+    <figcaption>Trafic fluide : véhicules espacés, tous en risque faible. Les probabilités résiduelles (environ 0.14) viennent de la vitesse supérieure à 110 km/h combinée à une trajectoire jugée brusque à cause du bruit des boîtes.</figcaption>
+  </figure>
+  <p>Sortie console sur la vidéo complète. Une seule situation dangereuse est détectée ; le reste du trafic, espacé et stable, reste en risque faible ou moyen, ce qui correspond à ce que l'on voit à l'écran.</p>
+<preRE><code>[ALERTE] t=2.0s frame=50 #2&lt;-&gt;#3 P=0.93 TTC=1.4s headway=0.1s risque=élevé</code></pre>
+</section>
+
+<!-- 9. RÉGLAGES -->
+<section id="reglages">
+  <h2>Réglages</h2>
+  <h3>Calibrer une nouvelle caméra</h3>
+  <ol>
+    <li>Extraire une image de la vidéo et repérer quatre points au sol formant un rectangle réel (marquages de voie, bords de chaussée).</li>
+    <li>Mesurer ou estimer sa largeur et sa longueur en mètres (largeur de voie : 3.5 m ; tiret autoroutier et espace : 12 m en Europe).</li>
+    <li>Reporter les quatre points dans <code>SOURCE</code> (ordre : haut gauche, haut droit, bas droit, bas gauche) et les dimensions dans <code>TARGET_WIDTH</code>, <code>TARGET_HEIGHT</code> de <code>ultralytics_example.py</code>.</li>
+    <li>Vérifier que les vitesses affichées sont plausibles avant de regarder les alertes.</li>
+  </ol>
+  <h3>Paramètres du module</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Paramètre</th><th>Valeur</th><th>Effet</th></tr>
+    <tr><td><code>THRESHOLDS["ttc_s"]</code></td><td>(1.5, 3.0)</td><td>Limites critique / alerte / sur du TTC.</td></tr>
+    <tr><td><code>THRESHOLDS["headway_s"]</code></td><td>(1.0, 2.0)</td><td>Limites du headway.</td></tr>
+    <tr><td><code>THRESHOLDS["speed_kmh"]</code></td><td>(50, 110)</td><td>À baisser en ville (par exemple 30 et 50).</td></tr>
+    <tr><td><code>THRESHOLDS["accel_ms2"]</code></td><td>3.0</td><td>À monter si le bruit de détection rend trop de trajectoires « brusques ».</td></tr>
+    <tr><td><code>THRESHOLDS["risk_p"]</code></td><td>(0.30, 0.60)</td><td>Limites faible / moyen / élevé.</td></tr>
+    <tr><td><code>VEHICLE_LENGTH_M</code>, <code>VEHICLE_WIDTH_M</code></td><td>4.5, 2.0</td><td>Taille de la zone de collision.</td></tr>
+    <tr><td><code>LANE_WIDTH_M</code></td><td>3.5</td><td>Écart transversal en dessous duquel deux véhicules sont dans la même voie.</td></tr>
+    <tr><td><code>PAIR_MAX_DISTANCE_M</code></td><td>60</td><td>Paires plus éloignées ignorées.</td></tr>
+    <tr><td><code>ALERT_COOLDOWN_S</code> (script)</td><td>1.0</td><td>Délai minimal entre deux alertes console pour une même paire.</td></tr>
+  </table></div>
+</section>
+
+<!-- 10. LIMITES -->
+<section id="limites">
+  <h2>Limites et suites</h2>
+  <ul>
+    <li><strong>Tables fixées par expertise.</strong> Les probabilités sont cohérentes mais non calibrées sur des accidents réels. Avec un jeu de données étiqueté (situations et issue), pgmpy permet de les apprendre : <code>model.fit(dataframe)</code>, sans changer la structure.</li>
+    <li><strong>Vitesse constante.</strong> Le TTC suppose que les véhicules gardent leur vitesse. Un modèle à accélération constante, ou une prédiction de trajectoire, anticiperait mieux les freinages.</li>
+    <li><strong>Bruit de détection.</strong> Les boîtes YOLO bougent légèrement d'une image à l'autre, ce qui gonfle l'accélération estimée. Un lissage (filtre de Kalman, moyenne glissante) réduirait les faux « brusque ».</li>
+    <li><strong>Calibration par caméra.</strong> La conversion en mètres dépend de la zone <code>SOURCE</code>. Une erreur de calibration se propage aux vitesses, au headway et au TTC.</li>
+    <li><strong>Performances.</strong> Environ 5 images par seconde sur processeur en 4K. Un GPU (<code>cuda</code>) ou l'accélération Apple (<code>mps</code>) permettrait le temps réel.</li>
+    <li><strong>Variables absentes.</strong> Météo, visibilité, type de véhicule (poids lourd) ou état de la chaussée pourraient devenir de nouveaux nœuds du réseau.</li>
+  </ul>
+</section>
+
+<!-- 11. API -->
+<section id="api">
+  <h2>Référence du module</h2>
+  <p>Fonctions de <code>examples/speed_estimation/accident_risk.py</code>.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Fonction</th><th>Rôle</th></tr>
+    <tr><td><code>assess_frame(tracks, fps)</code></td><td>Point d'entrée. <code>tracks</code> : <code>{id: [(image, x, y), ...]}</code>. Renvoie la cinématique par véhicule, le risque par véhicule <code>{id: (niveau, probabilité)}</code> et la liste des paires triée par probabilité décroissante.</td></tr>
+    <tr><td><code>kinematics(history, fps)</code></td><td>Position, vecteur vitesse, vitesse en km/h et accélération d'un véhicule, ou <code>None</code> si l'historique est trop court.</td></tr>
+    <tr><td><code>assess_pair(ki, kj)</code></td><td>Distance, headway, TTC, états discrets, probabilité et niveau pour une paire.</td></tr>
+    <tr><td><code>time_to_collision(p, v)</code></td><td>TTC à vitesse constante avec zone de collision elliptique.</td></tr>
+    <tr><td><code>discretize(ttc, headway, speed_kmh, accel)</code></td><td>Mesures continues vers états du réseau.</td></tr>
+    <tr><td><code>build_network()</code></td><td>Construit et valide le <code>DiscreteBayesianNetwork</code> pgmpy.</td></tr>
+    <tr><td><code>accident_probability(ttc, distance, vitesse, trajectoire)</code></td><td>P(Accident = oui) pour des états donnés, avec cache.</td></tr>
+    <tr><td><code>risk_level(p)</code></td><td>0, 1 ou 2 pour faible, moyen, élevé (<code>RISK_LEVELS</code>).</td></tr>
+  </table></div>
+<pre><code>from accident_risk import assess_frame, RISK_LEVELS
+
+kin, vehicle_risk, pairs = assess_frame(tracks, fps=25)
+for pair in pairs:
+    if pair["level"] == 2:
+        print(pair["ids"], pair["probability"], pair["ttc"])</code></pre>
+  <p style="color:var(--ink-3);font-size:14px;margin-top:48px">Bibliothèque Supervision : Roboflow, licence MIT. YOLO11 : Ultralytics, licence AGPL-3.0.</p>
+</section>
+
+</div>
+</main>
+
+<script>
+(() => {
+  const links = [...document.querySelectorAll('.side a')];
+  const byId = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const targets = [...byId.keys()].map(id => document.getElementById(id)).filter(Boolean);
+  const setActive = id => {
+    links.forEach(a => a.classList.remove('active'));
+    const a = byId.get(id);
+    if (a) a.classList.add('active');
+  };
+  const onScroll = () => {
+    let current = targets[0].id;
+    for (const el of targets) {
+      if (el.getBoundingClientRect().top < 120) current = el.id;
+    }
+    setActive(current);
+  };
+  document.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  links.forEach(a => a.addEventListener('click', () => document.body.classList.remove('menu-open')));
+})();
+</script>
+</body>
+</html>
